@@ -276,12 +276,11 @@ namespace OctoberStudio
                 //    if (playerId == 1) GameScreenBehavior.Instance.abilitiesWindowP1.Show(true);
                 //    else GameScreenBehavior.Instance.abilitiesWindowP2.Show(true);
                 //}
-                var randomSkills = UpgradesManager.Instance.GetUpgrades(1);
-
-                if (randomSkills != null && randomSkills.Count > 0)
+                var abilityManager = FindObjectOfType<OctoberStudio.Abilities.AbilityManager>();
+                if (abilityManager != null)
                 {
-                    // 2. 直接把这个抽到的技能，硬塞给当前升级的这名玩家！
-                    UpgradesManager.Instance.Upgrade(randomSkills[0], this);
+                    // 呼叫发牌器，把随机技能直接发给当前升级的这名玩家 (this)
+                    abilityManager.GiveRandomAbility(level, this);
                 }
             }
         }
