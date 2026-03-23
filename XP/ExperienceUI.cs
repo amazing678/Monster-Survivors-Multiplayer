@@ -12,6 +12,22 @@ namespace OctoberStudio
         [SerializeField] RectMask2D rectMask;
         [SerializeField] TMP_Text levelText;
 
+        [Tooltip("填 1 代表 P1，填 2 代表 P2")]
+        public int playerId = 1;
+
+        private void Update()
+        {
+            var player = (playerId == 1) ? PlayerBehavior.Player1 : PlayerBehavior.Player2;
+            if (player == null) return;
+
+            if (player.maxXp > 0)
+            {
+                // 调用原作者写好的完美遮罩切图法
+                SetProgress((float)player.xp / player.maxXp);
+            }
+            SetLevelText(player.level);
+        }
+
         public void SetProgress(float progress)
         {
             Vector4 padding = rectMask.padding;
@@ -21,7 +37,7 @@ namespace OctoberStudio
 
         public void SetLevelText(int levelNumber)
         {
-            levelText.text = $"�ȼ� {levelNumber}";
+            levelText.text = $"等级 {levelNumber}";
         }
     }
 }
