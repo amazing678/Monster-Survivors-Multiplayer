@@ -9,21 +9,32 @@ namespace OctoberStudio.Currency
         [SerializeField] string currencyID;
 
         public CurrencySave Currency { get; private set; }
-
+        private int lastGold = -1;
         private void Start()
         {
-            Currency = GameController.SaveManager.GetSave<CurrencySave>(currencyID);
+            //Currency = GameController.SaveManager.GetSave<CurrencySave>(currencyID);
 
-            SetAmount(Currency.Amount);
+            //SetAmount(Currency.Amount);
 
             icon.sprite = GameController.CurrenciesManager.GetIcon(currencyID);
 
-            Currency.onGoldAmountChanged += SetAmount;
+            //Currency.onGoldAmountChanged += SetAmount;
         }
 
-        private void OnDestroy()
+        //private void OnDestroy()
+        //{
+        //    Currency.onGoldAmountChanged -= SetAmount;
+        //}
+        private void Update()
         {
-            Currency.onGoldAmountChanged -= SetAmount;
+            // 实时读取对应玩家的个人钱包数据
+            var player = (playerId == 1) ? PlayerBehavior.Player1 : PlayerBehavior.Player2;
+            if (player != null && player.gold != lastGold)
+            {
+                lastGold = player.gold;
+                SetAmount(lastGold);
+                transform.localScale = Vector3.one * 1.3f; // 吃金币时的跳动动画
+            }
         }
     }
 }
