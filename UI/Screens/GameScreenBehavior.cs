@@ -15,18 +15,25 @@ namespace OctoberStudio
 {
     public class GameScreenBehavior : MonoBehaviour
     {
+        public static GameScreenBehavior Instance { get; private set; }
+
         private Canvas canvas;
 
         [SerializeField] BackgroundTintUI blackgroundTint;
         [SerializeField] JoystickBehavior joystick;
 
         [Header("Abilities")]
-        [FormerlySerializedAs("abilitiesPanel")]
-        [SerializeField] AbilitiesWindowBehavior abilitiesWindow;
+        // === 1. 双人窗口 ===
+        public AbilitiesWindowBehavior abilitiesWindowP1;
+        public AbilitiesWindowBehavior abilitiesWindowP2;
+
+        // === 2. 双人确认状态 ===
+        private bool p1FinishedUpgrade = true;
+        private bool p2FinishedUpgrade = true;
+
         [SerializeField] ChestWindowBehavior chestWindow;
         [SerializeField] List<AbilitiesIndicatorsListBehavior> abilitiesLists;
 
-        public AbilitiesWindowBehavior AbilitiesWindow => abilitiesWindow;
         public ChestWindowBehavior ChestWindow => chestWindow;
 
         [Header("Top UI")]
@@ -42,22 +49,32 @@ namespace OctoberStudio
 
         private void Awake()
         {
+            Instance = this;
             canvas = GetComponent<Canvas>();
 
-            abilitiesWindow.onPanelClosed += OnAbilitiesPanelClosed;
-            abilitiesWindow.onPanelStartedClosing += OnAbilitiesPanelStartedClosing;
+            // === 3. 分别绑定 P1 和 P2 窗口的关闭事件 ===
+            if (abilitiesWindowP1 != null)
+            {
+                abilitiesWindowP1.onPanelClosed += OnAbilitiesPanelClosedP1;
+                abilitiesWindowP1.onPanelStartedClosing += CheckAbilitiesStartedClosing;
+            }
+            if (abilitiesWindowP2 != null)
+            {
+                abilitiesWindowP2.onPanelClosed += OnAbilitiesPanelClosedP2;
+                abilitiesWindowP2.onPanelStartedClosing += CheckAbilitiesStartedClosing;
+            }
 
             pauseButton.onClick.AddListener(PauseButtonClick);
-
             pauseWindow.OnStartedClosing += OnPauseWindowStartedClosing;
             pauseWindow.OnClosed += OnPauseWindowClosed;
-
             chestWindow.OnClosed += OnChestWindowClosed;
         }
 
         private void Start()
         {
-            abilitiesWindow.Init();
+            // === 4. 初始化两个窗口 ===
+            if (abilitiesWindowP1 != null) abilitiesWindowP1.Init();
+            if (abilitiesWindowP2 != null) abilitiesWindowP2.Init();
 
             GameController.InputManager.InputAsset.UI.Settings.performed += OnSettingsInputClicked;
         }
@@ -109,16 +126,21 @@ namespace OctoberStudio
             bossHealthbar.SetBoss(enemy);
         }
 
+        // === 5. 打开双人升级面板的核心逻辑 ===
         public void ShowAbilitiesPanel(List<AbilityData> abilities, bool isLevelUp)
         {
-            abilitiesWindow.SetData(abilities);
+            p1FinishedUpgrade = false;
+            p2FinishedUpgrade = false;
+
+            // 给两边都塞入技能数据
+            if (abilitiesWindowP1 != null) abilitiesWindowP1.SetData(abilities);
+            if (abilitiesWindowP2 != null) abilitiesWindowP2.SetData(abilities);
 
             EasingManager.DoAfter(0.2f, () =>
             {
                 for (int i = 0; i < abilitiesLists.Count; i++)
                 {
                     var abilityList = abilitiesLists[i];
-
                     abilityList.Show();
                     abilityList.Refresh();
                 }
@@ -126,32 +148,54 @@ namespace OctoberStudio
 
             blackgroundTint.Show();
 
-            abilitiesWindow.Show(isLevelUp);
+            // 两边同时弹出
+            if (abilitiesWindowP1 != null) abilitiesWindowP1.Show(isLevelUp);
+            if (abilitiesWindowP2 != null) abilitiesWindowP2.Show(isLevelUp);
 
             GameController.InputManager.InputAsset.UI.Settings.performed -= OnSettingsInputClicked;
         }
 
-        private void OnAbilitiesPanelStartedClosing()
+        // === 6. 检查是否两人都选完了的逻辑 ===
+        private void CheckAbilitiesStartedClosing()
         {
-            for (int i = 0; i < abilitiesLists.Count; i++)
+            // 当一个人选完时，检查另一个人是不是也选完了。只有两人都选完，才隐藏黑色遮罩
+            if (p1FinishedUpgrade && p2FinishedUpgrade)
             {
-                var abilityList = abilitiesLists[i];
-
-                abilityList.Hide();
+                for (int i = 0; i < abilitiesLists.Count; i++)
+                {
+                    var abilityList = abilitiesLists[i];
+                    abilityList.Hide();
+                }
+                blackgroundTint.Hide();
             }
-
-            blackgroundTint.Hide();
         }
 
-        private void OnAbilitiesPanelClosed()
+        private void OnAbilitiesPanelClosedP1()
         {
-            GameController.InputManager.InputAsset.UI.Settings.performed += OnSettingsInputClicked;
+            p1FinishedUpgrade = true;
+            CheckAbilitiesFullyClosed();
         }
+
+        private void OnAbilitiesPanelClosedP2()
+        {
+            p2FinishedUpgrade = true;
+            CheckAbilitiesFullyClosed();
+        }
+
+        private void CheckAbilitiesFullyClosed()
+        {
+            // 只有两人都彻底关掉面板，才允许再次呼出设置菜单（游戏恢复）
+            if (p1FinishedUpgrade && p2FinishedUpgrade)
+            {
+                GameController.InputManager.InputAsset.UI.Settings.performed += OnSettingsInputClicked;
+            }
+        }
+
+        // ============================================
 
         public void ShowChestWindow(int tierId, List<AbilityData> abilities, List<AbilityData> selectedAbilities)
         {
             chestWindow.OpenWindow(tierId, abilities, selectedAbilities);
-
             GameController.InputManager.InputAsset.UI.Settings.performed -= OnSettingsInputClicked;
         }
 
@@ -171,10 +215,10 @@ namespace OctoberStudio
 
             GameController.InputManager.InputAsset.UI.Settings.performed -= OnSettingsInputClicked;
         }
-        
+
         private void OnPauseWindowClosed()
         {
-            if(GameController.InputManager.ActiveInput == Input.InputType.UIJoystick)
+            if (GameController.InputManager.ActiveInput == Input.InputType.UIJoystick)
             {
                 joystick.Enable();
             }
