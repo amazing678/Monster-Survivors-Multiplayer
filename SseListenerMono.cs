@@ -3,19 +3,35 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using SimpleJSON;
-using Main.Net; // ÒıÓÃÉÏÃæµÄÃüÃû¿Õ¼ä
+using Main.Net; // å¼•ç”¨ä¸Šé¢çš„å‘½åç©ºé—´
 
 public class SseListenerMono : MonoBehaviour
 {
-    [Tooltip("SSE ·şÎñµØÖ·")]
-    public string sseUrl = "https://192.168.10.38/adhd/sseApi/sseGameConnect";
+    public static SseListenerMono Instance { get; private set; }
+
+    [Tooltip("SSE æœåŠ¡åœ°å€")]
+    public string sseUrl = "http://192.168.10.41:8888";
+
+    [Header("åŒäººè®¾å¤‡ MAC åœ°å€ç»‘å®š")]
+    public string player1Mac = "C8:3F:50:D0:EF:48";
+    public string player2Mac = "F6:9D:8F:CF:77:30";
+    public float attentionThreshold = 50f; // è§¦å‘è‡ªåŠ¨ç§»åŠ¨çš„é˜ˆå€¼
 
     private ServerSentEventsClient _client = new ServerSentEventsClient();
     private readonly List<string> _drainBuffer = new List<string>(32);
 
-    public static bool Focused { get; private set; } = false;  // Ä¬ÈÏfalse
-    public static float attention { get; private set; } = 0f;  // Ä¬ÈÏfalse
-    public static float attentionThreshold { get; private set; } = 0f;  // Ä¬ÈÏfalse
+    // ç©å®¶ 1 çš„çŠ¶æ€
+    public static float P1_Attention { get; private set; } = 0f;
+    public static bool P1_Focused { get; private set; } = false;
+
+    // ç©å®¶ 2 çš„çŠ¶æ€
+    public static float P2_Attention { get; private set; } = 0f;
+    public static bool P2_Focused { get; private set; } = false;
+
+    private void Awake()
+    {
+        Instance = this;
+    }
 
     void Start()
     {
@@ -32,7 +48,7 @@ public class SseListenerMono : MonoBehaviour
 
     void Update()
     {
-        // ÔÚÖ÷Ïß³Ì°ÑÏûÏ¢¶ÓÁĞÇå¿Õ²¢´òÓ¡
+        // åœ¨ä¸»çº¿ç¨‹æŠŠæ¶ˆæ¯é˜Ÿåˆ—æ¸…ç©ºå¹¶æ‰“å°
         _drainBuffer.Clear();
         while (_client.MessageQueue.TryDequeue(out var msg))
         {
@@ -41,7 +57,7 @@ public class SseListenerMono : MonoBehaviour
 
         foreach (var m in _drainBuffer)
         {
-            Debug.Log($"[SSE][JSON] {PrettyJsonSafe(m)}");
+            //Debug.Log($"[SSE][JSON] {PrettyJsonSafe(m)}");
             HandleSseJson(m);
         }
     }
@@ -52,128 +68,100 @@ public class SseListenerMono : MonoBehaviour
     }
 
     /// <summary>
-    /// ¼òµ¥ JSON ÃÀ»¯£¨²»×öÑÏ¸ñ½âÎö£¬Óöµ½·Ç·¨ JSON »á»ØÍËÔ­´®£©
-    /// ÎŞµÚÈı·½¿âÇé¿öÏÂµÄÇáÁ¿·½°¸
+    /// ç®€å• JSON ç¾åŒ–ï¼ˆä¸åšä¸¥æ ¼è§£æï¼Œé‡åˆ°éæ³• JSON ä¼šå›é€€åŸä¸²ï¼‰
+    /// æ— ç¬¬ä¸‰æ–¹åº“æƒ…å†µä¸‹çš„è½»é‡æ–¹æ¡ˆ
     /// </summary>
-    private string PrettyJsonSafe(string raw)
-    {
-        try
-        {
-            // ³¢ÊÔ´ÖÂÔÅĞ¶ÏÊÇ·ñÏñ JSON
-            string s = raw.Trim();
-            if (!(s.StartsWith("{") && s.EndsWith("}")) && !(s.StartsWith("[") && s.EndsWith("]")))
-                return raw;
+    //private string PrettyJsonSafe(string raw)
+    //{
+    //    try
+    //    {
+    //        // å°è¯•ç²—ç•¥åˆ¤æ–­æ˜¯å¦åƒ JSON
+    //        string s = raw.Trim();
+    //        if (!(s.StartsWith("{") && s.EndsWith("}")) && !(s.StartsWith("[") && s.EndsWith("]")))
+    //            return raw;
 
-            var sb = new StringBuilder();
-            bool inString = false;
-            int indent = 0;
+    //        var sb = new StringBuilder();
+    //        bool inString = false;
+    //        int indent = 0;
 
-            for (int i = 0; i < s.Length; i++)
-            {
-                char c = s[i];
+    //        for (int i = 0; i < s.Length; i++)
+    //        {
+    //            char c = s[i];
 
-                if (c == '"' && (i == 0 || s[i - 1] != '\\'))
-                {
-                    inString = !inString;
-                    sb.Append(c);
-                    continue;
-                }
+    //            if (c == '"' && (i == 0 || s[i - 1] != '\\'))
+    //            {
+    //                inString = !inString;
+    //                sb.Append(c);
+    //                continue;
+    //            }
 
-                if (inString)
-                {
-                    sb.Append(c);
-                    continue;
-                }
+    //            if (inString)
+    //            {
+    //                sb.Append(c);
+    //                continue;
+    //            }
 
-                switch (c)
-                {
-                    case '{':
-                    case '[':
-                        sb.Append(c);
-                        sb.Append('\n');
-                        indent++;
-                        sb.Append(new string(' ', indent * 2));
-                        break;
-                    case '}':
-                    case ']':
-                        sb.Append('\n');
-                        indent = Math.Max(0, indent - 1);
-                        sb.Append(new string(' ', indent * 2));
-                        sb.Append(c);
-                        break;
-                    case ',':
-                        sb.Append(c);
-                        sb.Append('\n');
-                        sb.Append(new string(' ', indent * 2));
-                        break;
-                    case ':':
-                        sb.Append(": ");
-                        break;
-                    default:
-                        if (!char.IsWhiteSpace(c))
-                            sb.Append(c);
-                        break;
-                }
-            }
-            return sb.ToString();
-        }
-        catch
-        {
-            return raw; // »ØÍË
-        }
-    }
+    //            switch (c)
+    //            {
+    //                case '{':
+    //                case '[':
+    //                    sb.Append(c);
+    //                    sb.Append('\n');
+    //                    indent++;
+    //                    sb.Append(new string(' ', indent * 2));
+    //                    break;
+    //                case '}':
+    //                case ']':
+    //                    sb.Append('\n');
+    //                    indent = Math.Max(0, indent - 1);
+    //                    sb.Append(new string(' ', indent * 2));
+    //                    sb.Append(c);
+    //                    break;
+    //                case ',':
+    //                    sb.Append(c);
+    //                    sb.Append('\n');
+    //                    sb.Append(new string(' ', indent * 2));
+    //                    break;
+    //                case ':':
+    //                    sb.Append(": ");
+    //                    break;
+    //                default:
+    //                    if (!char.IsWhiteSpace(c))
+    //                        sb.Append(c);
+    //                    break;
+    //            }
+    //        }
+    //        return sb.ToString();
+    //    }
+    //    catch
+    //    {
+    //        return raw; // å›é€€
+    //    }
+    //}
 
 
     private void HandleSseJson(string jsonStr)
     {
-        UnityEngine.Debug.Log($"HandleSseJson:{jsonStr}");
-
-
         JSONNode root = JSONNode.Parse(jsonStr);
-        if (root == null)
+        if (root == null || !root.IsArray) return;
+
+        foreach (JSONNode node in root.AsArray)
         {
-            UnityEngine.Debug.LogWarning("[SSE] JSON ½âÎöÊ§°Ü");
-            return;
-        }
+            string addr = node["addr"].Value;
+            float att = node["attention"].AsFloat;
+            bool isFocused = att >= attentionThreshold;
 
-        var type = root["type"].AsInt;
-        var subType = root["subType"].AsInt;
-
-        if (type == 3 && subType == 3024)
-        {
-            var attention_focus = root["content"]["attention"].AsFloat;
-            var attentionThreshold_focus = root["content"]["attentionThreshold"].AsFloat;
-            var attentionFlag = root["content"]["attentionFlag"].AsBool;
-
-            UnityEngine.Debug.Log($"attentionFlag:{attentionFlag}");
-            UnityEngine.Debug.Log($"attention:{attention_focus}");
-            UnityEngine.Debug.Log($"attentionThreshold:{attentionThreshold_focus}");
-
-            attention = attention_focus;
-            attentionThreshold = attentionThreshold_focus;
-
-
-
-            if (attentionFlag)
+            if (addr == player1Mac)
             {
-                // ´æµ½¹«ÓĞÊôĞÔ
-                Focused = true;
+                P1_Attention = att;
+                P1_Focused = isFocused;
             }
-            else
+            else if (addr == player2Mac)
             {
-                Focused = false;
+                P2_Attention = att;
+                P2_Focused = isFocused;
             }
-
-
-
-
         }
-        else
-        {
-            UnityEngine.Debug.Log("Not True Value");
-        }
-
-
     }
 
 }
